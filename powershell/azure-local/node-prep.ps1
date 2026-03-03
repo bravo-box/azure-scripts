@@ -6,7 +6,7 @@
 # Variables
 $scriptPath = "C:\AzureLocalSetup"
 $driverSourcePath = "https://downloads.hpe.com/pub/softlib2/software1/sc-windows/p176556484/v274622/cp068800.exe" 
-$bootstrapScriptSource = "https://raw.githubusercontent.com/bravo-box/azgov-scripts/refs/heads/main/powershell/azurelocal-node.ps1"
+$bootstrapScriptSource = "https://raw.githubusercontent.com/bravo-box/azgov-scripts/refs/heads/main/powershell/azurelocal-node-add.ps1"
 
 # Make a directory to store the scripts
 if (-Not (Test-Path -Path $scriptPath)) {

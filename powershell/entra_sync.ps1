@@ -7,7 +7,7 @@ $OU = "OU=sync,DC=jumpstart,DC=local"
 $LogDirectory = "C:\Logs\EntraToADSync"
 $EventLogName = "EntraToADSync"
 $EventSource  = "EntraToADSyncScript"
-$Pass = "P@ssw0rd123!"  # Default password for new users
+$Pass = ""  # Default password for new users
 $secureFolder = "C:\Secure\AzureApp"
 $encryptedTenantId = "tenantId.bin"
 $encryptedClientId = "clientId.bin"
