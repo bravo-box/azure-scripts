@@ -2,6 +2,7 @@
 # Any drivers that are needed for the local node eg: network drivers should be copied to the node beforehand.
 # Also run some checks to ensure that the driver provider is NOT EQUAL to Microsoft.
 # It will copy the booststrap script to the local node and execute it.
+# Note the script is built for HPE machine. Driver Source Path would need to be updated to reflect correct hardware.
 
 # Variables
 $scriptPath = "C:\AzureLocalSetup"
