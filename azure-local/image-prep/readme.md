@@ -8,15 +8,16 @@ This folder contains a script to prepare a RHEL VM that was originally created i
 
 ## What the Script Changes
 
-By default, the script performs safe preparation steps:
+By default, the script performs full generalization for image capture:
 
 - Updates cloud-init datasource config to non-Azure values.
 - Backs up any existing datasource config before replacing it.
 - Disables and masks Azure Linux Agent (`waagent`) unless explicitly kept.
-- Clears cloud-init cache and logs.
+- Clears cloud-init cache and logs (`/var/lib/cloud`, `/var/log`, `/tmp`).
 - Cleans package manager metadata (`dnf` or `yum`).
+- Removes host identity artifacts and clears user bash history.
 
-Optional deprovision mode removes host identity artifacts for image capture workflows.
+Use `--no-deprovision` when you want only datasource/agent/cache preparation without host/user generalization.
 
 ## Requirements
 
@@ -38,7 +39,11 @@ sudo ./azure-local/image-prep/generalize-rhel.sh
 - `--datasources "NoCloud, ConfigDrive, None"`
   - Overrides cloud-init datasource list written to `/etc/cloud/cloud.cfg.d/91-azure_datasource.cfg`.
 - `--deprovision`
-  - Enables generalized image cleanup.
+  - Forces generalized image cleanup (default behavior).
+- `--no-deprovision`
+  - Skips host and user generalization cleanup.
+- `--waagent-deprovision-user`
+  - Runs `waagent -force -deprovision+user` (destructive). Implies `--deprovision`.
 - `--keep-waagent`
   - Keeps Azure Linux Agent enabled and running.
 - `-h`, `--help`
@@ -50,8 +55,14 @@ sudo ./azure-local/image-prep/generalize-rhel.sh
 # Default safe prep
 sudo ./azure-local/image-prep/generalize-rhel.sh
 
-# Generalize for image capture
+# Prep only (no host/user generalization)
+sudo ./azure-local/image-prep/generalize-rhel.sh --no-deprovision
+
+# Explicit generalize for image capture (same as default)
 sudo ./azure-local/image-prep/generalize-rhel.sh --deprovision
+
+# Generalize and deprovision user metadata via waagent
+sudo ./azure-local/image-prep/generalize-rhel.sh --deprovision --waagent-deprovision-user
 
 # Keep waagent and set simpler datasource order
 sudo ./azure-local/image-prep/generalize-rhel.sh --keep-waagent --datasources "NoCloud, None"
@@ -62,14 +73,17 @@ sudo ./azure-local/image-prep/generalize-rhel.sh --keep-waagent --datasources "N
 When `--deprovision` is used, the script additionally:
 
 - Removes SSH host keys from `/etc/ssh/ssh_host_*`
+- Removes `/etc/lvm/devices/system.devices`
 - Clears machine identity:
   - truncates `/etc/machine-id`
   - resets `/var/lib/dbus/machine-id` symlink
-- Removes legacy network scripts (`ifcfg-*`, `route-*`) under `/etc/sysconfig/network-scripts`
-- Clears temporary files under `/tmp` and `/var/tmp`
-- Removes `/root/.bash_history`
+- Removes files under `/etc/sysconfig/network-scripts`
+- Clears temporary files under `/var/tmp`
+- Removes bash history for root and local interactive users
 
 Use this mode only when creating a reusable image.
+
+If `--waagent-deprovision-user` is specified, `waagent -force -deprovision+user` is also executed.
 
 ## Verification
 

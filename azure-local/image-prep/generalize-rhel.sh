@@ -7,8 +7,9 @@ set -euo pipefail
 SCRIPT_NAME="$(basename "$0")"
 DEFAULT_DATASOURCES="NoCloud, ConfigDrive, None"
 DATASOURCES="$DEFAULT_DATASOURCES"
-DEPROVISION=0
+DEPROVISION=1
 DISABLE_WAAGENT=1
+WAAGENT_DEPROVISION_USER=0
 
 usage() {
   cat <<EOF
@@ -16,13 +17,17 @@ Usage: $SCRIPT_NAME [options]
 
 Options:
   --datasources "NoCloud, ConfigDrive, None"  cloud-init datasources for non-Azure boots
-  --deprovision                                remove host-specific state for image capture
+  --deprovision                                force deprovision mode (default)
+  --no-deprovision                             skip host/user generalization cleanup
+  --waagent-deprovision-user                   run waagent -force -deprovision+user (destructive)
   --keep-waagent                               keep Azure Linux Agent enabled
   -h, --help                                   show this help
 
 Examples:
   sudo ./$SCRIPT_NAME
+  sudo ./$SCRIPT_NAME --no-deprovision
   sudo ./$SCRIPT_NAME --deprovision
+  sudo ./$SCRIPT_NAME --deprovision --waagent-deprovision-user
   sudo ./$SCRIPT_NAME --datasources "NoCloud, None" --keep-waagent
 EOF
 }
@@ -81,10 +86,48 @@ disable_waagent_if_present() {
 clean_cloudinit_cache() {
   if command -v cloud-init >/dev/null 2>&1; then
     cloud-init clean --logs || true
-    rm -rf /var/lib/cloud/instances/* /var/lib/cloud/instance /var/lib/cloud/seed/* || true
+    rm -rf /var/lib/cloud/ /var/log/* /tmp/* || true
     log "Cleared cloud-init cache"
   else
     log "cloud-init not found; skipping cloud-init cleanup"
+  fi
+}
+
+clean_vm_specific_details() {
+  # These files are tied to one machine identity and should not be kept in a reusable image.
+  rm -f /etc/ssh/ssh_host_* || true
+  rm -f /etc/lvm/devices/system.devices || true
+
+  if [[ -d /etc/sysconfig/network-scripts ]]; then
+    find /etc/sysconfig/network-scripts -maxdepth 1 -type f -delete || true
+  fi
+}
+
+clear_all_bash_histories() {
+  rm -f /root/.bash_history || true
+
+  while IFS=: read -r _ _ uid _ _ home shell; do
+    if [[ "$uid" -ge 1000 ]] && [[ -d "$home" ]] && [[ "$shell" != "/sbin/nologin" ]] && [[ "$shell" != "/usr/sbin/nologin" ]] && [[ "$shell" != "/bin/false" ]]; then
+      rm -f "$home/.bash_history" || true
+    fi
+  done < /etc/passwd
+
+  export HISTSIZE=0
+  export HISTFILESIZE=0
+  unset HISTFILE || true
+  log "Cleared bash history for root and local interactive users"
+}
+
+run_waagent_deprovision_user() {
+  if [[ "$WAAGENT_DEPROVISION_USER" -ne 1 ]]; then
+    return
+  fi
+
+  if command -v waagent >/dev/null 2>&1; then
+    log "Running waagent -force -deprovision+user"
+    waagent -force -deprovision+user || true
+  else
+    log "waagent binary not found; skipping --waagent-deprovision-user"
   fi
 }
 
@@ -96,18 +139,15 @@ deprovision_host_identity() {
 
   log "Deprovision mode enabled: removing host-specific state"
 
-  rm -f /etc/ssh/ssh_host_* || true
+  clean_vm_specific_details
+
   truncate -s 0 /etc/machine-id || true
   rm -f /var/lib/dbus/machine-id || true
   ln -sf /etc/machine-id /var/lib/dbus/machine-id || true
 
-  if [[ -d /etc/sysconfig/network-scripts ]]; then
-    find /etc/sysconfig/network-scripts -maxdepth 1 -type f -name 'ifcfg-*' -delete || true
-    find /etc/sysconfig/network-scripts -maxdepth 1 -type f -name 'route-*' -delete || true
-  fi
-
-  rm -rf /tmp/* /var/tmp/* || true
-  rm -f /root/.bash_history || true
+  rm -rf /var/tmp/* || true
+  clear_all_bash_histories
+  run_waagent_deprovision_user
 }
 
 clean_package_metadata() {
@@ -130,6 +170,16 @@ parse_args() {
         shift 2
         ;;
       --deprovision)
+        DEPROVISION=1
+        shift
+        ;;
+      --no-deprovision)
+        DEPROVISION=0
+        WAAGENT_DEPROVISION_USER=0
+        shift
+        ;;
+      --waagent-deprovision-user)
+        WAAGENT_DEPROVISION_USER=1
         DEPROVISION=1
         shift
         ;;
