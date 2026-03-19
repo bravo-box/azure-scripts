@@ -22,6 +22,7 @@ Collection of PowerShell and Bash helpers for Azure services. THe readme outline
 | `azure-local/arc-enabled-kubernetes/k8s_proxy.sh` | Starts an Azure Arc-enabled Kubernetes proxy session and supports interactive cluster selection. | Checks for `az`, `kubectl`, `jq`, and installs `connectedk8s` extension if missing. Logs to a timestamped file. If there are multiple clusters in the subscription you will be prompted to select the cluster you want to work on. |
 | `azure-local/arc-enabled-kubernetes/generate-service-token.sh` | Creates a Kubernetes service token tied to the signed-in Azure user object and copies it to clipboard. | Requires valid Azure login and active `kubectl` context. Uses `pbcopy` (macOS) to copy the service token to memory. Service token is also printed to screen. |
 | `azure-local/arc-enabled-kubernetes/sql-on-aks.sh` | Deploys SQL Server on an Arc-enabled AKS cluster (namespace, secret, PVC/statefulset/service, load balancer). | Interactive script. Prompts for SA password and LB IP range. Requires existing storage class named `default`. |
+| `azure-local/image-prep/generalize-rhel.sh` | Prepares an Azure-created RHEL VM to boot outside Azure by switching cloud-init datasource and optionally deprovisioning host identity. | Supports safe defaults, file backup, optional waagent retention, and `--deprovision` mode for image capture workflows. See `azure-local/image-prep/readme.md` for detailed guidance. |
 
 ## Prerequisites
 
