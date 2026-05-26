@@ -20,7 +20,8 @@
     
 .PARAMETER DriverDownloadUrl
     URL to download the NVIDIA mitigation driver.
-    Default: https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/nvidia_azure_stack_inf_v2022.10.13_public.zip
+    Original Default: https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/nvidia_azure_stack_inf_v2022.10.13_public.zip
+    Update Default: https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/Azure_Local_Mitigation_092525.zip
     
 .PARAMETER DownloadPath
     Path where driver will be downloaded and extracted.
