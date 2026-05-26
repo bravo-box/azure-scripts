@@ -58,7 +58,7 @@ param(
     [string[]]$GPUModelInstances,
     
     [Parameter(Mandatory = $false)]
-    [string]$DriverDownloadUrl = "https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/nvidia_azure_stack_inf_v2022.10.13_public.zip",
+    [string]$DriverDownloadUrl = "https://docs.nvidia.com/datacenter/tesla/gpu-passthrough/Azure_Local_Mitigation_092525.zip",
     
     [Parameter(Mandatory = $false)]
     [string]$DownloadPath = "C:\AzureLocalSetup",
