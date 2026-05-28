@@ -215,17 +215,32 @@ Write-Host "==========================================" -ForegroundColor Green
 $extractPath = Join-Path $DownloadPath "nvidia-mitigation-driver"
 
 if (Test-Path $extractPath) {
-    Get-ChildItem $extractPath -Filter "*.inf" | ForEach-Object {
-        Write-Host "Found driver: $($_.Name)" -ForegroundColor Cyan
+    # Recursively search for .inf files in all subdirectories
+    Write-Host "Searching for driver files recursively..." -ForegroundColor Gray
+    $allInfFiles = Get-ChildItem $extractPath -Filter "*.inf" -Recurse -ErrorAction SilentlyContinue
+    
+    if ($allInfFiles.Count -gt 0) {
+        Write-Host "Found $($allInfFiles.Count) driver file(s):" -ForegroundColor Cyan
+        $allInfFiles | ForEach-Object {
+            Write-Host "  - $($_.FullName)" -ForegroundColor Cyan
+        }
     }
     
-    # List available GPU model drivers
+    # List available GPU model drivers (recursive search)
     Write-Host ""
     Write-Host "Available GPU model drivers:" -ForegroundColor Yellow
-    Get-ChildItem $extractPath -Filter "*_base.inf" | ForEach-Object {
-        $modelName = $_.Name -replace "_base.inf", "" -replace "nvidia_azure_stack_", ""
-        $fullName = $_.Name
-        Write-Host "  - $($modelName): $($fullName)"
+    $baseInfFiles = Get-ChildItem $extractPath -Filter "*_base.inf" -Recurse -ErrorAction SilentlyContinue
+    
+    if ($baseInfFiles.Count -gt 0) {
+        $baseInfFiles | ForEach-Object {
+            $modelName = $_.Name -replace "_base.inf", "" -replace "nvidia_azure_stack_", ""
+            $fullName = $_.Name
+            $relativePath = $_.FullName -replace [regex]::Escape($extractPath), ""
+            Write-Host "  - $($modelName): $($relativePath.TrimStart('\'))"
+        }
+    }
+    else {
+        Write-Host "No driver files found in extraction path." -ForegroundColor Red
     }
     
     Write-Host ""
@@ -235,12 +250,13 @@ if (Test-Path $extractPath) {
     $gpuModel = Read-Host "Enter GPU model (e.g., A2, T4, A16) or press Enter to skip installation"
     
     if ($gpuModel) {
-        $driverFile = Join-Path $extractPath "nvidia_azure_stack_$($gpuModel)_base.inf"
+        # Search recursively for the specific driver file
+        $driverFile = Get-ChildItem $extractPath -Filter "nvidia_azure_stack_$($gpuModel)_base.inf" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         
-        if (Test-Path $driverFile) {
+        if ($driverFile) {
             try {
-                Write-Host "Installing driver: $driverFile" -ForegroundColor Cyan
-                pnputil /add-driver $driverFile /install /force
+                Write-Host "Installing driver: $($driverFile.FullName)" -ForegroundColor Cyan
+                pnputil /add-driver "$($driverFile.FullName)" /install /force
                 Write-Host "Driver installation complete!" -ForegroundColor Green
             }
             catch {
@@ -248,10 +264,12 @@ if (Test-Path $extractPath) {
             }
         }
         else {
-            Write-Host "Driver file not found: $driverFile" -ForegroundColor Red
+            Write-Host "Driver file not found for GPU model: $gpuModel" -ForegroundColor Red
             Write-Host "Available drivers:" -ForegroundColor Yellow
-            Get-ChildItem $extractPath -Filter "*_base.inf" | ForEach-Object {
-                Write-Host "  - $($_.FullName)"
+            $baseInfFiles = Get-ChildItem $extractPath -Filter "*_base.inf" -Recurse -ErrorAction SilentlyContinue
+            $baseInfFiles | ForEach-Object {
+                $relativePath = $_.FullName -replace [regex]::Escape($extractPath), ""
+                Write-Host "  - $($relativePath.TrimStart('\'))"
             }
         }
     }
