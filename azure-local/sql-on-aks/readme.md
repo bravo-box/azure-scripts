@@ -40,6 +40,12 @@ az extension add --name connectedk8s --upgrade
 az extension list -o table
 ```
 
+Ensure that the arcnetworking extension has been installed:
+
+```
+https://learn.microsoft.com/en-us/azure/aks/aksarc/deploy-load-balancer-cli
+```
+
 ## Access and context
 
 - Authenticated Azure CLI session (`az login`)
