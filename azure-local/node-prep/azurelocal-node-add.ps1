@@ -55,8 +55,12 @@ switch ($envChoice) {
     }
 }
 
-# Sign in with managed identity to query the user-assigned identity object.
-Connect-AzAccount -Environment $EnvironmentName -Identity | Out-Null
+# Sign in with a service principal so the script can query and manage identity resources.
+$TenantId = Read-Host -Prompt "Enter Tenant ID"
+$ApplicationId = Read-Host -Prompt "Enter Service Principal Application (Client) ID"
+$SecurePassword = Read-Host -Prompt "Enter Service Principal Client Secret" -AsSecureString
+$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationId, $SecurePassword
+Connect-AzAccount -Environment $EnvironmentName -ServicePrincipal -TenantId $TenantId -Credential $Credential | Out-Null
 
 # Retrieve user-assigned managed identity details.
 $identity = Get-AzUserAssignedIdentity -ResourceGroupName $identityResourceGroup -Name $identityName
@@ -66,9 +70,6 @@ if ($assignIdentityToVm -eq "y") {
     Get-AzVM -ResourceGroupName $vmResourceGroup -Name $vmName | Update-AzVM -IdentityType UserAssigned -IdentityId $identity.Id | Out-Null
     Write-Host "Assigned user-assigned identity '$identityName' to VM '$vmName'."
 }
-
-# Re-authenticate using the user-assigned managed identity client ID.
-Connect-AzAccount -Environment $EnvironmentName -Identity -AccountId $identity.ClientId | Out-Null
 
 # Removed redundant Connect-AzAccount and $Region assignment since it's handled in the switch statement
 # Get Tenant ID and Context
