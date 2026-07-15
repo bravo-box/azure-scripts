@@ -27,36 +27,48 @@ switch ($RPConfirmed) {
 # Enter the number for your Azure environment, Commercial(1), USGov(2)
 $envChoice = Read-Host -Prompt "Select your Azure Environment: Commercial(1), USGov(2)"
 
-# Optional: provide a client ID for a user-assigned managed identity.
-# Leave blank to use the system-assigned managed identity.
-$managedIdentityClientId = Read-Host -Prompt "Enter managed identity client ID (optional, press Enter for system-assigned)"
+# Prompt for user-assigned managed identity details
+$identityResourceGroup = Read-Host -Prompt "Enter the Resource Group Name for the user-assigned managed identity"
+$identityName = Read-Host -Prompt "Enter the Name of the user-assigned managed identity"
+
+# Optional: attach the managed identity to a VM before authenticating with it
+$assignIdentityToVm = Read-Host -Prompt "Assign this user-assigned identity to a VM now? (y/n)"
+if ($assignIdentityToVm -eq "y") {
+    $vmResourceGroup = Read-Host -Prompt "Enter VM Resource Group Name"
+    $vmName = Read-Host -Prompt "Enter VM Name"
+}
 
 switch ($envChoice) {
     "1" {
-        if ([string]::IsNullOrWhiteSpace($managedIdentityClientId)) {
-            Connect-AzAccount -Environment AzureCloud -Identity
-        }
-        else {
-            Connect-AzAccount -Environment AzureCloud -Identity -AccountId $managedIdentityClientId
-        }
         $Region = "eastus"
         $Cloud = "AzureCloud"
+        $EnvironmentName = "AzureCloud"
     }
     "2" {
-        if ([string]::IsNullOrWhiteSpace($managedIdentityClientId)) {
-            Connect-AzAccount -Environment AzureUSGovernment -Identity
-        }
-        else {
-            Connect-AzAccount -Environment AzureUSGovernment -Identity -AccountId $managedIdentityClientId
-        }
         $Region = "usgovvirginia"
         $Cloud = "AzureUSGovernment"
+        $EnvironmentName = "AzureUSGovernment"
     }
     Default {
         Write-Host "Invalid selection. Please run the script again and select a valid option."
         exit
     }
 }
+
+# Sign in with managed identity to query the user-assigned identity object.
+Connect-AzAccount -Environment $EnvironmentName -Identity | Out-Null
+
+# Retrieve user-assigned managed identity details.
+$identity = Get-AzUserAssignedIdentity -ResourceGroupName $identityResourceGroup -Name $identityName
+
+# Optionally attach user-assigned identity to the target VM.
+if ($assignIdentityToVm -eq "y") {
+    Get-AzVM -ResourceGroupName $vmResourceGroup -Name $vmName | Update-AzVM -IdentityType UserAssigned -IdentityId $identity.Id | Out-Null
+    Write-Host "Assigned user-assigned identity '$identityName' to VM '$vmName'."
+}
+
+# Re-authenticate using the user-assigned managed identity client ID.
+Connect-AzAccount -Environment $EnvironmentName -Identity -AccountId $identity.ClientId | Out-Null
 
 # Removed redundant Connect-AzAccount and $Region assignment since it's handled in the switch statement
 # Get Tenant ID and Context
