@@ -27,17 +27,6 @@ switch ($RPConfirmed) {
 # Enter the number for your Azure environment, Commercial(1), USGov(2)
 $envChoice = Read-Host -Prompt "Select your Azure Environment: Commercial(1), USGov(2)"
 
-# Prompt for user-assigned managed identity details
-$identityResourceGroup = Read-Host -Prompt "Enter the Resource Group Name for the user-assigned managed identity"
-$identityName = Read-Host -Prompt "Enter the Name of the user-assigned managed identity"
-
-# Optional: attach the managed identity to a VM before authenticating with it
-$assignIdentityToVm = Read-Host -Prompt "Assign this user-assigned identity to a VM now? (y/n)"
-if ($assignIdentityToVm -eq "y") {
-    $vmResourceGroup = Read-Host -Prompt "Enter VM Resource Group Name"
-    $vmName = Read-Host -Prompt "Enter VM Name"
-}
-
 switch ($envChoice) {
     "1" {
         $Region = "eastus"
@@ -55,23 +44,13 @@ switch ($envChoice) {
     }
 }
 
-# Sign in with a service principal so the script can query and manage identity resources.
+# Sign in with a service principal.
 $TenantId = Read-Host -Prompt "Enter Tenant ID"
 $ApplicationId = Read-Host -Prompt "Enter Service Principal Application (Client) ID"
 $SecurePassword = Read-Host -Prompt "Enter Service Principal Client Secret" -AsSecureString
 $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationId, $SecurePassword
 Connect-AzAccount -Environment $EnvironmentName -ServicePrincipal -TenantId $TenantId -Credential $Credential | Out-Null
 
-# Retrieve user-assigned managed identity details.
-$identity = Get-AzUserAssignedIdentity -ResourceGroupName $identityResourceGroup -Name $identityName
-
-# Optionally attach user-assigned identity to the target VM.
-if ($assignIdentityToVm -eq "y") {
-    Get-AzVM -ResourceGroupName $vmResourceGroup -Name $vmName | Update-AzVM -IdentityType UserAssigned -IdentityId $identity.Id | Out-Null
-    Write-Host "Assigned user-assigned identity '$identityName' to VM '$vmName'."
-}
-
-# Removed redundant Connect-AzAccount and $Region assignment since it's handled in the switch statement
 # Get Tenant ID and Context
 $tenantId = (Get-AzContext).Tenant.Id
 Write-Host "Current Tenant ID: $tenantId"
