@@ -1,6 +1,7 @@
 # This PowerShell script is designed to set up prerequisites for deploying Azure Local clusters.
 # It connects to the appropriate Azure environment, retrieves necessary context information,
 # checks and registers required resource providers, and invokes the Azure Stack HCI Arc initialization.
+# It uses a service principal which has been created in the Azure Arc blade.
 
 # Notice, ensure that the Resource Providers are registered
 # Check if Resource Providers are registered
