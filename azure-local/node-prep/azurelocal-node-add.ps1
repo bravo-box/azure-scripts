@@ -26,14 +26,31 @@ switch ($RPConfirmed) {
 
 # Enter the number for your Azure environment, Commercial(1), USGov(2)
 $envChoice = Read-Host -Prompt "Select your Azure Environment: Commercial(1), USGov(2)"
+
+# Optional: provide a client ID for a user-assigned managed identity.
+# Leave blank to use the system-assigned managed identity.
+$managedIdentityClientId = Read-Host -Prompt "Enter managed identity client ID (optional, press Enter for system-assigned)"
+
 switch ($envChoice) {
     "1" {
-        Connect-AzAccount -Environment AzureCloud -DeviceCode
+        if ([string]::IsNullOrWhiteSpace($managedIdentityClientId)) {
+            Connect-AzAccount -Environment AzureCloud -Identity
+        }
+        else {
+            Connect-AzAccount -Environment AzureCloud -Identity -AccountId $managedIdentityClientId
+        }
         $Region = "eastus"
+        $Cloud = "AzureCloud"
     }
     "2" {
-        Connect-AzAccount -Environment AzureUSGovernment -DeviceCode
+        if ([string]::IsNullOrWhiteSpace($managedIdentityClientId)) {
+            Connect-AzAccount -Environment AzureUSGovernment -Identity
+        }
+        else {
+            Connect-AzAccount -Environment AzureUSGovernment -Identity -AccountId $managedIdentityClientId
+        }
         $Region = "usgovvirginia"
+        $Cloud = "AzureUSGovernment"
     }
     Default {
         Write-Host "Invalid selection. Please run the script again and select a valid option."
@@ -64,7 +81,7 @@ $armTokenResponse = Get-AzAccessToken
 
 # Convert token to string for use in initialization
 # Required because Get-AzAccessToken returns SecureString
-$ArmAccessToken = [System.Net.NetworkCredential]::new("", $armTokenResponse.Token).Password
+$armAccessTokenPlain = [System.Net.NetworkCredential]::new("", $armTokenResponse.Token).Password
 
 #Invoke the registration script. Use a supported region.
-Invoke-AzStackHciArcInitialization -SubscriptionID $subscriptionId -ResourceGroup $RG -TenantID $tenantId -Region $Region -Cloud "AzureUSGovernment" -ArmAccessToken $ARMtoken -AccountID $id
+Invoke-AzStackHciArcInitialization -SubscriptionID $subscriptionId -ResourceGroup $RG -TenantID $tenantId -Region $Region -Cloud $Cloud -ArmAccessToken $armAccessTokenPlain -AccountID $id
