@@ -7,12 +7,14 @@ This folder contains helper scripts for common Azure Arc-enabled Kubernetes task
 - create a Kubernetes token for the signed-in Azure user
 - start an Arc proxy session to the selected connected cluster
 - deploy SQL Server on an Arc-enabled Kubernetes cluster and create a runtime load balancer
+- create a Flux v2 GitOps configuration to sync a Git repository to the cluster
 
 Scripts in this folder:
 
 - `generate-service-token.sh` (Bash) or `generate-service-token.ps1` (PowerShell) — choose based on your platform
 - `k8s_proxy.sh` (Bash) or `k8s_proxy.ps1` (PowerShell) — choose based on your platform
 - `sql-on-aks.sh` (Bash)
+- `create-gitops-config.sh` (Bash) or `create-gitops-config.ps1` (PowerShell) — FLUX v2 GitOps configuration
 
 ## Prerequisites
 
@@ -37,6 +39,7 @@ Scripts in this folder:
 - Permission to run `az connectedk8s proxy`
 - Permission to create Kubernetes resources in the target cluster namespace
 - Permission to create `k8s-runtime` load balancer resources (for `sql-on-aks.sh`)
+- Permission to create cluster extensions (`Microsoft.KubernetesConfiguration/extensions`) and Flux configurations (`Microsoft.KubernetesConfiguration/fluxConfigurations`) for `create-gitops-config.sh` / `create-gitops-config.ps1`
 
 ## Cluster expectations
 
@@ -80,6 +83,18 @@ kubectl get nodes
 
 ```bash
 ./sql-on-aks.sh
+```
+
+5. Create a FLUX GitOps configuration to sync a Git repository to the cluster:
+
+**Bash:**
+```bash
+./create-gitops-config.sh
+```
+
+**PowerShell:**
+```powershell
+./create-gitops-config.ps1
 ```
 
 ## Script Details
@@ -243,6 +258,54 @@ Security note:
 - The script outputs the raw SA password in the final summary.
 - Avoid running in shared terminals or persisted logs without sanitization.
 
+## 4) create-gitops-config.sh (Bash) or create-gitops-config.ps1 (PowerShell)
+
+Purpose:
+
+- create a **FLUX v2 GitOps configuration** (`Microsoft.KubernetesConfiguration/fluxConfigurations`) on an Arc-enabled Kubernetes cluster, so the cluster continuously syncs manifests from a Git repository
+
+What it does:
+
+- discovers/selects an Arc-enabled cluster (or accepts a `cluster-name` argument) and derives resource group/subscription
+- installs the required Azure CLI extensions: `connectedk8s`, `k8s-configuration`, `k8s-extension`
+- installs the `microsoft.flux` cluster extension if it isn't already present
+- prompts (or accepts flags/parameters) for repo URL, branch, path, config name, namespace, scope (`cluster` or `namespace`), kustomization name, sync/retry intervals, and prune
+- supports repository authentication: none (public repo), HTTPS (username + password/PAT), or SSH (private key + optional known_hosts)
+- shows a review summary of the collected settings and asks for confirmation before creating anything
+- runs `az k8s-configuration flux create` and then `az k8s-configuration flux show` to display the resulting status
+
+### Bash Version
+
+Usage:
+
+```bash
+./create-gitops-config.sh
+./create-gitops-config.sh <cluster-name>
+./create-gitops-config.sh <cluster-name> --repo-url https://github.com/org/repo --branch main --path ./clusters/prod
+./create-gitops-config.sh --help
+```
+
+### PowerShell Version
+
+Usage:
+
+```powershell
+./create-gitops-config.ps1
+./create-gitops-config.ps1 -ClusterName <cluster-name>
+./create-gitops-config.ps1 -ClusterName <cluster-name> -RepoUrl https://github.com/org/repo -Branch main -Path ./clusters/prod
+Get-Help ./create-gitops-config.ps1 -Full
+```
+
+Behavior notes (both versions):
+
+- Logs output to a timestamped file in the same directory: `create-gitops-config_YYYYMMDD_HHMMSS.log`
+- Any GitOps setting not supplied as an option/parameter is collected interactively, with the option value (or default) shown as the prompt default
+- The confirmation step loops back to re-collect settings if you decline
+
+Security note:
+
+- The HTTPS password/PAT is read with hidden input (`read -s` / `Read-Host -AsSecureString`) but is passed to `az` in plaintext as required by the CLI; treat shell history and logs accordingly
+
 ## Expected Workflow
 
 Recommended order for most scenarios:
@@ -251,6 +314,7 @@ Recommended order for most scenarios:
 2. Use a second terminal for `kubectl` commands.
 3. Optionally run `generate-service-token.sh` (or `generate-service-token.ps1` on PowerShell) if you need an auth token.
 4. Run `sql-on-aks.sh` to deploy SQL workload and Arc load balancer.
+5. Run `create-gitops-config.sh` (or `create-gitops-config.ps1` on PowerShell) to set up FLUX GitOps sync from a Git repository.
 
 ## Troubleshooting
 
@@ -304,6 +368,16 @@ Check:
 - cluster resource URI resolves:
 	- `az connectedk8s show -n <cluster> -g <rg> --query id -o tsv`
 - selected IP range is valid for your network design
+
+## FLUX configuration fails
+
+Check:
+
+- the `microsoft.flux` cluster extension installed successfully: `az k8s-extension list --cluster-name <cluster> --resource-group <rg> --cluster-type connectedClusters -o table`
+- the repository URL, branch, and path are correct and reachable from the cluster
+- credentials (HTTPS user/PAT or SSH private key) are valid and have read access to the repo
+- Flux resource status on the cluster: `kubectl get gitrepositories,kustomizations -n <namespace>`
+- detailed reconciliation errors: `kubectl describe kustomization <kustomization-name> -n <namespace>`
 
 ## Script Safety Notes
 
