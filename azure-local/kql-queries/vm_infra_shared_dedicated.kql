@@ -1,0 +1,30 @@
+// This queries all virtual machines in a subscription and outlines whether they are
+// on dedicated or shared hardware. This will help determine if workload is IL4 or IL5 
+
+Resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| where subscriptionId =~ '<subscription-guid>'
+| extend vmSize = tostring(properties.hardwareProfile.vmSize)
+| extend dedicatedHostId = tostring(properties.host.id)
+| extend dedicatedHostGroupId = tostring(properties.hostGroup.id)
+| extend infrastructurePlacement = case(
+    isnotempty(dedicatedHostId), 'Dedicated Host',
+    isnotempty(dedicatedHostGroupId), 'Dedicated Host Group',
+    'Shared / not on dedicated host'
+)
+| join kind=leftouter (
+    ResourceContainers
+    | where type =~ 'microsoft.resources/subscriptions'
+    | project subscriptionId, subscriptionName = name
+) on subscriptionId
+| project
+    subscriptionName,
+    subscriptionId,
+    resourceGroup,
+    vmName = name,
+    location,
+    vmSize,
+    infrastructurePlacement,
+    dedicatedHostId,
+    dedicatedHostGroupId
+| order by resourceGroup asc, vmName asc
