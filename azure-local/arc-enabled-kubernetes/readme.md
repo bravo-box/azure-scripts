@@ -5,6 +5,7 @@
 This folder contains helper scripts for common Azure Arc-enabled Kubernetes tasks in Azure Local environments:
 
 - configure a Kubernetes ServiceAccount and RBAC binding aligned to a Microsoft Entra ID identity
+- enable the MetalLB networking extension and create a load balancer instance
 - create a Kubernetes token for the signed-in Azure user
 - start an Arc proxy session to the selected connected cluster
 - deploy SQL Server on an Arc-enabled Kubernetes cluster and create a runtime load balancer
@@ -13,6 +14,7 @@ This folder contains helper scripts for common Azure Arc-enabled Kubernetes task
 Scripts in this folder:
 
 - `config-service-account.sh` (Bash) — Entra ID-aligned ServiceAccount and RBAC binding
+- `config-networking-extn.sh` (Bash) — MetalLB networking extension and load balancer
 - `generate-service-token.sh` (Bash) or `generate-service-token.ps1` (PowerShell) — choose based on your platform
 - `k8s_proxy.sh` (Bash) or `k8s_proxy.ps1` (PowerShell) — choose based on your platform
 - `sql-on-aks.sh` (Bash)
@@ -42,7 +44,8 @@ Scripts in this folder:
 - Permission to create Kubernetes resources in the target cluster namespace
 - Permission to read Entra ID users/service principals (`az ad user show` / `az ad sp show`) for `config-service-account.sh`
 - Permission to create `ServiceAccount`, `ClusterRoleBinding`/`RoleBinding` resources in the target cluster for `config-service-account.sh`
-- Permission to create `k8s-runtime` load balancer resources (for `sql-on-aks.sh`)
+- Permission to create cluster extensions (`Microsoft.KubernetesConfiguration/extensions`), optionally register the `Microsoft.KubernetesRuntime` resource provider, and (for the graph method) Microsoft Graph `Application.Read.All` for `config-networking-extn.sh`
+- Permission to create `k8s-runtime` load balancer resources (for `sql-on-aks.sh` and `config-networking-extn.sh`)
 - Permission to create cluster extensions (`Microsoft.KubernetesConfiguration/extensions`) and Flux configurations (`Microsoft.KubernetesConfiguration/fluxConfigurations`) for `create-gitops-config.sh` / `create-gitops-config.ps1`
 
 ## Cluster expectations
@@ -77,7 +80,13 @@ kubectl get nodes
 ./config-service-account.sh
 ```
 
-4. Optionally generate a Kubernetes token for that identity:
+4. Enable the MetalLB networking extension (optionally creating a load balancer instance):
+
+```bash
+./config-networking-extn.sh
+```
+
+5. Optionally generate a Kubernetes token for that identity:
 
 **Bash:**
 ```bash
@@ -89,13 +98,13 @@ kubectl get nodes
 ./generate-service-token.ps1
 ```
 
-5. Deploy SQL Server workload:
+6. Deploy SQL Server workload:
 
 ```bash
 ./sql-on-aks.sh
 ```
 
-6. Create a FLUX GitOps configuration to sync a Git repository to the cluster:
+7. Create a FLUX GitOps configuration to sync a Git repository to the cluster:
 
 **Bash:**
 ```bash
@@ -144,7 +153,44 @@ Options:
 - `--cluster-role NAME` — `ClusterRole` to bind (default: `cluster-admin`)
 - `--scope cluster|namespace` — `ClusterRoleBinding` vs `RoleBinding` (default: `cluster`)
 
-## 2) k8s_proxy.sh (Bash) or k8s_proxy.ps1 (PowerShell)
+## 2) config-networking-extn.sh (Bash)
+
+Purpose:
+
+- enable the MetalLB (`microsoft.arcnetworking`) cluster extension on an Arc-enabled Kubernetes cluster
+- optionally create a MetalLB load balancer instance (`IPAddressPool` + `L2Advertisement`/`BGPAdvertisement`) via `az k8s-runtime load-balancer create`
+
+Usage:
+
+```bash
+./config-networking-extn.sh
+./config-networking-extn.sh myCluster --create-load-balancer --ip-range 192.168.1.240-192.168.1.250
+./config-networking-extn.sh myCluster --method rp
+./config-networking-extn.sh --help
+```
+
+Behavior notes:
+
+- Checks for `az` and `jq`, and installs/upgrades the `connectedk8s`, `k8s-extension`, and `k8s-runtime` Azure CLI extensions if missing
+- Discovers/selects an Arc-enabled cluster (or accepts a `cluster-name` argument) and derives resource group/subscription
+- Skips enabling the extension if it's already installed on the cluster
+- Enables the extension using one of two methods controlled by `--method`:
+  - `graph`: `az k8s-runtime load-balancer enable` (requires Microsoft Graph `Application.Read.All`)
+  - `rp`: registers the `Microsoft.KubernetesRuntime` resource provider and runs `az k8s-extension create --extension-type microsoft.arcnetworking`
+  - `auto` (default): probes Graph permission and falls back to `rp` automatically
+- Prompts to optionally create a load balancer instance (IP range + advertise mode) if not supplied via flags
+- Logs output to a timestamped file in the same directory: `config-networking-extn_YYYYMMDD_HHMMSS.log`
+
+Options:
+
+- `--method auto|graph|rp` — how to enable the extension (default: `auto`)
+- `--fpa-app-id APP_ID` — Entra ID app ID of the Arc Kubernetes Runtime extension (default is the published Microsoft app ID; override if your cloud/tenant uses a different one)
+- `--create-load-balancer` — also create a load balancer instance after enabling the extension
+- `--lb-name NAME` — load balancer instance name (default: `metallb`)
+- `--ip-range RANGE` — IP address range for the load balancer, e.g. `192.168.1.240-192.168.1.250`
+- `--advertise-mode ARP|BGP|Both` — MetalLB advertise mode (default: `ARP`; `BGP` isn't supported on multi-rack deployments)
+
+## 3) k8s_proxy.sh (Bash) or k8s_proxy.ps1 (PowerShell)
 
 Purpose:
 
@@ -211,7 +257,7 @@ Output highlights:
 - proxy startup messages
 - color-coded status messages
 
-## 3) generate-service-token.sh (Bash) or generate-service-token.ps1 (PowerShell)
+## 4) generate-service-token.sh (Bash) or generate-service-token.ps1 (PowerShell)
 
 Purpose:
 
@@ -264,7 +310,7 @@ Both versions:
 - Treat terminal logs and shell history as sensitive when using these scripts
 - Consider redirecting output to `/dev/null` after copying to clipboard in production
 
-## 4) sql-on-aks.sh
+## 5) sql-on-aks.sh
 
 Purpose:
 
@@ -303,7 +349,7 @@ Security note:
 - The script outputs the raw SA password in the final summary.
 - Avoid running in shared terminals or persisted logs without sanitization.
 
-## 5) create-gitops-config.sh (Bash) or create-gitops-config.ps1 (PowerShell)
+## 6) create-gitops-config.sh (Bash) or create-gitops-config.ps1 (PowerShell)
 
 Purpose:
 
@@ -358,9 +404,10 @@ Recommended order for most scenarios:
 1. Run `k8s_proxy.sh` (or `k8s_proxy.ps1` on PowerShell) and keep it open.
 2. Use a second terminal for `kubectl` commands.
 3. Optionally run `config-service-account.sh` to align a ServiceAccount + RBAC binding to your Entra ID identity (or another user/service principal).
-4. Optionally run `generate-service-token.sh` (or `generate-service-token.ps1` on PowerShell) if you need an auth token for that identity.
-5. Run `sql-on-aks.sh` to deploy SQL workload and Arc load balancer.
-6. Run `create-gitops-config.sh` (or `create-gitops-config.ps1` on PowerShell) to set up FLUX GitOps sync from a Git repository.
+4. Optionally run `config-networking-extn.sh` to enable the MetalLB networking extension and create a load balancer instance.
+5. Optionally run `generate-service-token.sh` (or `generate-service-token.ps1` on PowerShell) if you need an auth token for that identity.
+6. Run `sql-on-aks.sh` to deploy SQL workload and Arc load balancer.
+7. Run `create-gitops-config.sh` (or `create-gitops-config.ps1` on PowerShell) to set up FLUX GitOps sync from a Git repository.
 
 ## Troubleshooting
 
