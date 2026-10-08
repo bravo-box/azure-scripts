@@ -4,6 +4,7 @@
 
 This folder contains helper scripts for common Azure Arc-enabled Kubernetes tasks in Azure Local environments:
 
+- configure a Kubernetes ServiceAccount and RBAC binding aligned to a Microsoft Entra ID identity
 - create a Kubernetes token for the signed-in Azure user
 - start an Arc proxy session to the selected connected cluster
 - deploy SQL Server on an Arc-enabled Kubernetes cluster and create a runtime load balancer
@@ -11,6 +12,7 @@ This folder contains helper scripts for common Azure Arc-enabled Kubernetes task
 
 Scripts in this folder:
 
+- `config-service-account.sh` (Bash) — Entra ID-aligned ServiceAccount and RBAC binding
 - `generate-service-token.sh` (Bash) or `generate-service-token.ps1` (PowerShell) — choose based on your platform
 - `k8s_proxy.sh` (Bash) or `k8s_proxy.ps1` (PowerShell) — choose based on your platform
 - `sql-on-aks.sh` (Bash)
@@ -38,6 +40,8 @@ Scripts in this folder:
 - Access to list and read Arc-enabled Kubernetes resources (`Microsoft.Kubernetes/connectedClusters`)
 - Permission to run `az connectedk8s proxy`
 - Permission to create Kubernetes resources in the target cluster namespace
+- Permission to read Entra ID users/service principals (`az ad user show` / `az ad sp show`) for `config-service-account.sh`
+- Permission to create `ServiceAccount`, `ClusterRoleBinding`/`RoleBinding` resources in the target cluster for `config-service-account.sh`
 - Permission to create `k8s-runtime` load balancer resources (for `sql-on-aks.sh`)
 - Permission to create cluster extensions (`Microsoft.KubernetesConfiguration/extensions`) and Flux configurations (`Microsoft.KubernetesConfiguration/fluxConfigurations`) for `create-gitops-config.sh` / `create-gitops-config.ps1`
 
@@ -67,7 +71,13 @@ Scripts in this folder:
 kubectl get nodes
 ```
 
-3. Optionally generate a Kubernetes token for the signed-in Azure user:
+3. Configure a Kubernetes ServiceAccount aligned to your Entra ID identity (or another user/service principal):
+
+```bash
+./config-service-account.sh
+```
+
+4. Optionally generate a Kubernetes token for that identity:
 
 **Bash:**
 ```bash
@@ -79,13 +89,13 @@ kubectl get nodes
 ./generate-service-token.ps1
 ```
 
-4. Deploy SQL Server workload:
+5. Deploy SQL Server workload:
 
 ```bash
 ./sql-on-aks.sh
 ```
 
-5. Create a FLUX GitOps configuration to sync a Git repository to the cluster:
+6. Create a FLUX GitOps configuration to sync a Git repository to the cluster:
 
 **Bash:**
 ```bash
@@ -99,7 +109,42 @@ kubectl get nodes
 
 ## Script Details
 
-## 1) k8s_proxy.sh (Bash) or k8s_proxy.ps1 (PowerShell)
+## 1) config-service-account.sh (Bash)
+
+Purpose:
+
+- create a Kubernetes `ServiceAccount` named after a Microsoft Entra ID object ID (user, group, or service principal)
+- bind that `ServiceAccount` to a `ClusterRole` via a `ClusterRoleBinding` (cluster scope) or `RoleBinding` (namespace scope)
+- prepare the cluster so the aligned identity can later obtain a token with `generate-service-token.sh` (`kubectl create token <object-id>` only works if a matching `ServiceAccount` already exists)
+
+Usage:
+
+```bash
+./config-service-account.sh
+./config-service-account.sh --upn jane.doe@contoso.com --cluster-role edit --scope namespace
+./config-service-account.sh --sp-app-id <app-id> --namespace automation
+./config-service-account.sh --help
+```
+
+Behavior notes:
+
+- Checks for `az` and `kubectl`, and installs/upgrades the `connectedk8s` extension if missing
+- Requires `kubectl` to already be pointed at the target cluster (start `k8s_proxy.sh` first)
+- Resolves the target Entra ID object ID from `--object-id`, `--upn` (`az ad user show`), `--sp-app-id` (`az ad sp show`), or defaults to the signed-in user (`az ad signed-in-user show`)
+- Creates the target namespace if it doesn't already exist (default: `default`)
+- Applies the `ServiceAccount` and role binding idempotently (`kubectl apply`, safe to re-run)
+- Logs output to a timestamped file in the same directory: `config-service-account_YYYYMMDD_HHMMSS.log`
+
+Options:
+
+- `--object-id ID` — Entra ID object ID to align the service account to (default: signed-in user)
+- `--upn UPN` — resolve object ID from a user principal name / email
+- `--sp-app-id APP_ID` — resolve object ID from a service principal app ID
+- `--namespace NAME` — namespace to create the `ServiceAccount` in (default: `default`)
+- `--cluster-role NAME` — `ClusterRole` to bind (default: `cluster-admin`)
+- `--scope cluster|namespace` — `ClusterRoleBinding` vs `RoleBinding` (default: `cluster`)
+
+## 2) k8s_proxy.sh (Bash) or k8s_proxy.ps1 (PowerShell)
 
 Purpose:
 
@@ -166,7 +211,7 @@ Output highlights:
 - proxy startup messages
 - color-coded status messages
 
-## 2) generate-service-token.sh (Bash) or generate-service-token.ps1 (PowerShell)
+## 3) generate-service-token.sh (Bash) or generate-service-token.ps1 (PowerShell)
 
 Purpose:
 
@@ -219,7 +264,7 @@ Both versions:
 - Treat terminal logs and shell history as sensitive when using these scripts
 - Consider redirecting output to `/dev/null` after copying to clipboard in production
 
-## 3) sql-on-aks.sh
+## 4) sql-on-aks.sh
 
 Purpose:
 
@@ -258,7 +303,7 @@ Security note:
 - The script outputs the raw SA password in the final summary.
 - Avoid running in shared terminals or persisted logs without sanitization.
 
-## 4) create-gitops-config.sh (Bash) or create-gitops-config.ps1 (PowerShell)
+## 5) create-gitops-config.sh (Bash) or create-gitops-config.ps1 (PowerShell)
 
 Purpose:
 
@@ -312,9 +357,10 @@ Recommended order for most scenarios:
 
 1. Run `k8s_proxy.sh` (or `k8s_proxy.ps1` on PowerShell) and keep it open.
 2. Use a second terminal for `kubectl` commands.
-3. Optionally run `generate-service-token.sh` (or `generate-service-token.ps1` on PowerShell) if you need an auth token.
-4. Run `sql-on-aks.sh` to deploy SQL workload and Arc load balancer.
-5. Run `create-gitops-config.sh` (or `create-gitops-config.ps1` on PowerShell) to set up FLUX GitOps sync from a Git repository.
+3. Optionally run `config-service-account.sh` to align a ServiceAccount + RBAC binding to your Entra ID identity (or another user/service principal).
+4. Optionally run `generate-service-token.sh` (or `generate-service-token.ps1` on PowerShell) if you need an auth token for that identity.
+5. Run `sql-on-aks.sh` to deploy SQL workload and Arc load balancer.
+6. Run `create-gitops-config.sh` (or `create-gitops-config.ps1` on PowerShell) to set up FLUX GitOps sync from a Git repository.
 
 ## Troubleshooting
 
